@@ -7,7 +7,7 @@
 using namespace std;
 void createProcess(string x)
 {
-    char cmdline[256];
+    char cmdline[1024];
     strncpy(cmdline, x.c_str(), sizeof(cmdline)-1);
     STARTUPINFOA si = { sizeof(si) };    //tells Windows how to set up the new process window   
     PROCESS_INFORMATION pi = {};        //fills it with pi.hProcesss and pi.hthread   
@@ -143,7 +143,7 @@ vector<string> tokenize(string input) //helps in separate command and argument
     int main ()
 {
     vector<string> history;
-    string yourVariable;
+    string input;
     SetConsoleOutputCP(CP_UTF8);  // For emojis
     ShellUI::displayBanner();      //Banner - ONCE
     SetConsoleCtrlHandler([](DWORD signal) -> BOOL {
@@ -156,22 +156,22 @@ vector<string> tokenize(string input) //helps in separate command and argument
         GetCurrentDirectoryA(256, buffer);
         ShellUI::displayPrompt();   
         if(cin.fail()) { cin.clear(); continue; }
-        getline(cin, yourVariable);
-        if(yourVariable.empty()) continue;
-        vector<string> tokens = tokenize(yourVariable);
-        history.push_back(yourVariable); //added to the history which could be shown in the terminal as per user request 
+        getline(cin, input);
+        if(input.empty()) continue;
+        vector<string> tokens = tokenize(input);
+        history.push_back(input); //added to the history which could be shown in the terminal as per user request 
         if(tokens[0] == "exit")
         {
             break;
         }
-        else if(tokens[0] == "cd")
+        else if(tokens[0] == "cd")//used to change the directory
         {
             string path = tokens[1];
             if(SetCurrentDirectoryA(path.c_str()) == false)
                 ShellUI::displayError("Directory not found");
         }
-        else if(tokens[0]== "pwd")
-        {
+        else if(tokens[0]== "pwd") //used to print current directory
+        { //gives the entire path
             char buffer[256];
             GetCurrentDirectoryA(256, buffer);
             cout << buffer << endl;
@@ -191,16 +191,16 @@ vector<string> tokenize(string input) //helps in separate command and argument
             }
         }
          //if 2 commands are given split pipe is called to split them and execute them
-        else if(yourVariable.find("|") != string::npos)
+        else if(input.find("|") != string::npos)
         {
-            vector<string> parts = split_pipe(yourVariable);
+            vector<string> parts = split_pipe(input);
             execute_pipe(parts[0], parts[1]);
         }
-        else if(yourVariable.find(">>") != string::npos)
+        else if(input.find(">>") != string::npos)
         {
-            size_t pos = yourVariable.find(">>");
-            string command = yourVariable.substr(0, pos - 1);
-            string filename = yourVariable.substr(pos + 3);
+            size_t pos = input.find(">>");
+            string command = input.substr(0, pos - 1);
+            string filename = input.substr(pos + 3);
             HANDLE fileHandle = CreateFileA(
             filename.c_str(),
             GENERIC_WRITE,
@@ -210,10 +210,10 @@ vector<string> tokenize(string input) //helps in separate command and argument
             NULL
         );
         if(fileHandle == INVALID_HANDLE_VALUE)
-{
-    ShellUI::displayError("Could not open file");
-    continue;
-}
+        {
+            ShellUI::displayError("Could not open file");
+            continue;
+        }
             SetFilePointer(fileHandle, 0, NULL, FILE_END);
             SetHandleInformation(fileHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
             char cmdline[1024];
@@ -234,55 +234,18 @@ vector<string> tokenize(string input) //helps in separate command and argument
                 CloseHandle(fileHandle);
             }
         }
-        else if(yourVariable.find(">") != string::npos) //To see wether the input contains ">"
-        {
-            size_t pos = yourVariable.find(">");
-            string command = yourVariable.substr(0, pos - 1);
-            string filename = yourVariable.substr(pos + 2);
-            HANDLE fileHandle = CreateFileA(
+        else if(input.find(">") != string::npos) //To see wether the input contains ">"
+        { //output redirection ... input is taken from the kyeboard and output is given in an output.txt file made 
+            //automatically
+            size_t pos = input.find(">");
+            string command = input.substr(0, pos - 1);
+            string filename = input.substr(pos + 2);
+            HANDLE fileHandle = CreateFileA( //arguments to create a file
             filename.c_str(),
             GENERIC_WRITE,
             0,
             NULL,
             CREATE_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL,
-            NULL
-        );
-        if(fileHandle == INVALID_HANDLE_VALUE)
-{
-    ShellUI::displayError("Could not open file");
-    continue;
-}
-        SetHandleInformation(fileHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-        char cmdline[1024];
-    strncpy(cmdline, command.c_str(), sizeof(cmdline)-1);
-    STARTUPINFOA si1 = { sizeof(si1) };
-    si1.dwFlags = STARTF_USESTDHANDLES;
-    si1.hStdOutput = fileHandle;
-    si1.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si1.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    PROCESS_INFORMATION pi1 = {};
-    if(CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si1, &pi1) == false)
-    ShellUI::displayError("Error running command");
-    else
-    {
-        WaitForSingleObject(pi1.hProcess, INFINITE);
-        CloseHandle(pi1.hProcess);
-        CloseHandle(pi1.hThread);
-        CloseHandle(fileHandle);
-    }
-}
-        else if(yourVariable.find("<") != string::npos) //To see wether the input contains "<"
-        {
-            size_t pos = yourVariable.find("<");
-            string command = yourVariable.substr(0, pos - 1);
-            string filename = yourVariable.substr(pos + 2);
-            HANDLE fileHandle = CreateFileA(
-            filename.c_str(),
-            GENERIC_READ,
-            0,
-            NULL,
-            OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
             NULL
         );
@@ -296,8 +259,8 @@ vector<string> tokenize(string input) //helps in separate command and argument
         strncpy(cmdline, command.c_str(), sizeof(cmdline)-1);
         STARTUPINFOA si1 = { sizeof(si1) };
         si1.dwFlags = STARTF_USESTDHANDLES;
-        si1.hStdInput = fileHandle;
-        si1.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si1.hStdOutput = fileHandle; //ouput given in external file
+        si1.hStdInput = GetStdHandle(STD_INPUT_HANDLE);//input read from the keyboard 
         si1.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         PROCESS_INFORMATION pi1 = {};
         if(CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si1, &pi1) == false)
@@ -305,18 +268,57 @@ vector<string> tokenize(string input) //helps in separate command and argument
         else
         {
             WaitForSingleObject(pi1.hProcess, INFINITE);
-            CloseHandle(pi1.hProcess);
+            CloseHandle(pi1.hProcess); //when process finishes.. proceeds to close the file as no data 
+            //is incoming
+            CloseHandle(pi1.hThread);
+            CloseHandle(fileHandle);
+        }
+    }
+        else if(input.find("<") != string::npos) //To see wether the input contains "<"
+        {  //reads content from an external file and prints on the screen (output.txt)
+            size_t pos = input.find("<");
+            string command = input.substr(0, pos - 1);
+            string filename = input.substr(pos + 2);
+            HANDLE fileHandle = CreateFileA(
+            filename.c_str(), //arguments for the windows eg-> which file to read,is it read-only etc
+            GENERIC_READ,
+            0,
+            NULL,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            NULL
+        );
+        if(fileHandle == INVALID_HANDLE_VALUE) //if the input becomes invalid file cant be opened 
+        {
+            ShellUI::displayError("Could not open file");
+            continue;
+        }
+        SetHandleInformation(fileHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+        char cmdline[1024];
+        strncpy(cmdline, command.c_str(), sizeof(cmdline)-1);
+        STARTUPINFOA si1 = { sizeof(si1) };
+        si1.dwFlags = STARTF_USESTDHANDLES;
+        si1.hStdInput = fileHandle; //input from external file
+        si1.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE); //output shown on the terminal 
+        si1.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        PROCESS_INFORMATION pi1 = {};
+        if(CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si1, &pi1) == false)
+        ShellUI::displayError("Error running command");
+        else
+        {
+            WaitForSingleObject(pi1.hProcess, INFINITE);
+            CloseHandle(pi1.hProcess); //after process is done file is closed 
             CloseHandle(pi1.hThread);
             CloseHandle(fileHandle);
         }
         }
         else
-{
-    string result = find_in_path(tokens[0]);
-    if(result == "")
-        ShellUI::displayError("YOUR COMMAND CAN NOT BE FOUND");
-    else
-        createProcess(result + " " + yourVariable.substr(tokens[0].length()));
-}
+        {
+            string result = find_in_path(tokens[0]); //if command is not found
+            if(result == "")
+                ShellUI::displayError("YOUR COMMAND CAN NOT BE FOUND");
+            else
+                createProcess(result + " " + input.substr(tokens[0].length()));
+        }
     }
 }
